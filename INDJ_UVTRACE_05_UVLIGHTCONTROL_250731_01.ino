@@ -1,60 +1,52 @@
-const int stepPin     = 2;
-const int dirPin      = 3;
-const int switchPin   = 4;   // LED 开关（常开）
-const int sensorPin   = 5;   // 光电开关（常闭）
-const int relayPin    = 7;   // 控制继电器（LED）
-const int enaPin      = 6;   // 控制 DM556 ENA- 引脚
+const int stepPin    = 2;
+const int dirPin     = 3;
+const int switchPin  = 4;   // LED 开关输入
+const int sensorPin  = 5;   // 光电传感器（常闭）
+const int enaPin     = 6;   // DM556 ENA 控制
+const int ledRelay   = 7;   // 控制 LED 的继电器模块
 
-bool direction = true;
-bool lastSensorState = HIGH;
-unsigned long lastSpeedChangeTime = 0;
-int stepDelay = 1000;  // 初始速度，越小越快
+bool currentDir = HIGH;
+bool lastSensorState = LOW;
 
 void setup() {
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
-  pinMode(switchPin, INPUT_PULLUP);   // 常开开关
-  pinMode(sensorPin, INPUT_PULLUP);   // 常闭光电
-  pinMode(relayPin, OUTPUT);
+  pinMode(switchPin, INPUT_PULLUP);
+  pinMode(sensorPin, INPUT_PULLUP);
   pinMode(enaPin, OUTPUT);
+  pinMode(ledRelay, OUTPUT);
 
-  digitalWrite(dirPin, direction ? HIGH : LOW);
-  digitalWrite(relayPin, LOW);  // 默认关闭 LED
-  digitalWrite(enaPin, HIGH);   // 默认电机禁用（ENA- 高电平）
-
-  randomSeed(analogRead(0));
+  digitalWrite(dirPin, currentDir);
+  digitalWrite(enaPin, HIGH);     // 默认电机不输出
+  digitalWrite(ledRelay, LOW);    // 默认继电器关闭（LED 关闭）
 }
 
 void loop() {
-  bool switchState = digitalRead(switchPin);   // HIGH = 开关按下
-  bool sensorState = digitalRead(sensorPin);   // LOW = 光电被触发
+  bool switchState = digitalRead(switchPin);
+  bool sensorState = digitalRead(sensorPin);
 
   if (switchState == HIGH) {
-    digitalWrite(relayPin, HIGH);   // 打开 LED（继电器吸合）
-    digitalWrite(enaPin, LOW);      // 使能电机驱动（ENA- 接低）
+    // 开关按下，启动电机和LED
+    digitalWrite(enaPin, LOW);      // 启用电机驱动
+    digitalWrite(ledRelay, HIGH);   // 启动继电器（LED点亮）
 
-    // 检测光电从未触发 → 触发（下降沿）
-    if (lastSensorState == HIGH && sensorState == LOW) {
-      direction = !direction;
-      digitalWrite(dirPin, direction ? HIGH : LOW);
+    // 电机运行：发送脉冲
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(1000);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(1000);
+
+    // 光电触发一次，切换方向
+    if (sensorState == HIGH && lastSensorState == LOW) {
+      currentDir = !currentDir;
+      digitalWrite(dirPin, currentDir);
+      delay(200);  // 防抖
     }
+
     lastSensorState = sensorState;
 
-    // 步进一个脉冲
-    digitalWrite(stepPin, HIGH);
-    delayMicroseconds(stepDelay);
-    digitalWrite(stepPin, LOW);
-    delayMicroseconds(stepDelay);
-
-    // 每秒随机一次速度
-    if (millis() - lastSpeedChangeTime > 3000) {
-      lastSpeedChangeTime = millis();
-      stepDelay = random(300, 1200);  // 可调速度范围
-    }
-
   } else {
-    digitalWrite(relayPin, LOW);     // 关闭继电器（LED）
-    digitalWrite(enaPin, HIGH);      // 禁用电机驱动（ENA- 高）
-    lastSensorState = HIGH;          // 避免误触发
-  }
+    // 开关未按，关闭电机和LED
+    digitalWrite(enaPin, HIGH);     
+    digitalWrite(ledRelay, LOW);    
 }
